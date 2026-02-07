@@ -4,8 +4,8 @@ from datetime import datetime
 import os
 
 # ================= CONFIG =================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+BOT_TOKEN = os.getenv("8319981273:AAFxxGWig3lHrVgi6FnK8hPkq3ume8HghSA")
+CHAT_ID = os.getenv("5837332461")
 
 DEX_URL = "https://api.dexscreener.com/latest/dex/search?q=BSC"
 
