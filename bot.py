@@ -1,80 +1,105 @@
-import time
+import os
+import asyncio
 import logging
+import requests
 from datetime import datetime
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-import telegram
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+# ================= CONFIG =================
+BOT_TOKEN = os.getenv("8319981273:AAFxxGWig3lHrVgi6FnK8hPkq3ume8HghSA")
+CHAT_ID = os.getenv("5837332461")
 
-# =========================
-# بيانات البوت (حطهم هنا)
-# =========================
-BOT_TOKEN = "8319981273:AAFxxGWig3lHrVgi6FnK8hPkq3ume8HghSA"
-CHAT_ID = 5837332461  # بدون ""
+DEX_API = "https://api.dexscreener.com/latest/dex/pairs/bsc"
+SCAN_INTERVAL = 300  # 5 دقائق
+# ==========================================
 
-# =========================
-# لوق
-# =========================
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# =========================
-# أوامر
-# =========================
-def start(update, context):
-    update.message.reply_text(
-        "🤖 SmartScanner Bot شغال\n"
-        "/status - الحالة\n"
-        "/ping - اختبار\n"
-        "/time - الوقت\n"
-        "/id - Chat ID"
-    )
+sent_pairs = set()
 
-def status(update, context):
-    update.message.reply_text("✅ البوت يعمل بدون مشاكل")
+def now():
+    return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
-def ping(update, context):
-    update.message.reply_text("🏓 Pong")
-
-def time_cmd(update, context):
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-    update.message.reply_text(f"🕒 {now}")
-
-def show_id(update, context):
-    update.message.reply_text(f"🆔 Chat ID: {update.message.chat_id}")
-
-def echo(update, context):
-    update.message.reply_text(update.message.text)
-
-# =========================
-# تشغيل
-# =========================
-def main():
-    bot = telegram.Bot(token=BOT_TOKEN)
-
-    # رسالة إجبارية عند التشغيل
+def fetch_pairs():
     try:
-        bot.send_message(
-            chat_id=CHAT_ID,
-            text="🚀 SmartScanner Bot اشتغل بنجاح على Railway"
-        )
+        r = requests.get(DEX_API, timeout=15)
+        return r.json().get("pairs", [])
     except Exception as e:
-        logging.error(f"Startup message failed: {e}")
+        logger.error(e)
+        return []
 
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
+def good(p):
+    try:
+        return (
+            float(p["liquidity"]["usd"]) >= 15000 and
+            float(p["volume"]["m5"]) >= 8000 and
+            float(p["priceChange"]["m5"]) >= 3
+        )
+    except:
+        return False
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("status", status))
-    dp.add_handler(CommandHandler("ping", ping))
-    dp.add_handler(CommandHandler("time", time_cmd))
-    dp.add_handler(CommandHandler("id", show_id))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
+def msg(p):
+    return f"""
+🚨 Signal Detected
 
-    logging.info("Bot running...")
-    updater.start_polling()
-    updater.idle()
+🪙 {p['baseToken']['symbol']}
+💧 Liquidity: ${p['liquidity']['usd']}
+📊 Vol 5m: ${p['volume']['m5']}
+📈 Change 5m: {p['priceChange']['m5']}%
+
+⏰ {now()}
+"""
+
+async def scanner(app):
+    while True:
+        pairs = fetch_pairs()
+
+        # 🔥 إثبات شغل البوت (رسالة كل دورة)
+        await app.bot.send_message(
+            chat_id=CHAT_ID,
+            text=f"🔍 Scan OK | pairs found: {len(pairs)} | {now()}"
+        )
+
+        for p in pairs:
+            pid = p.get("pairAddress")
+            if not pid or pid in sent_pairs:
+                continue
+
+            if good(p):
+                await app.bot.send_message(
+                    chat_id=CHAT_ID,
+                    text=msg(p)
+                )
+                sent_pairs.add(pid)
+
+        await asyncio.sleep(SCAN_INTERVAL)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🤖 SmartScanner شغّال")
+
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🏓 Pong")
+
+async def time_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(now())
+
+async def id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(str(update.effective_chat.id))
+
+async def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("ping", ping))
+    app.add_handler(CommandHandler("time", time_cmd))
+    app.add_handler(CommandHandler("id", id_cmd))
+
+    asyncio.create_task(scanner(app))
+    logger.info("Bot running stable mode")
+
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
