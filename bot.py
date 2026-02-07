@@ -1,113 +1,80 @@
 import time
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
-from telegram import Update, Bot
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
-)
+import telegram
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
-# ===============================
-# 🔐 ضع بياناتك هنا فقط
-# ===============================
-
+# =========================
+# بيانات البوت (حطهم هنا)
+# =========================
 BOT_TOKEN = "8319981273:AAFxxGWig3lHrVgi6FnK8hPkq3ume8HghSA"
-OWNER_ID = 5837332461  # ضع Chat ID متاعك (رقم فقط)
+CHAT_ID = 5837332461  # بدون ""
 
-# ===============================
-# ⚙️ إعداد اللوق
-# ===============================
-
+# =========================
+# لوق
+# =========================
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 
-# ===============================
-# 📌 أوامر البوت
-# ===============================
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 SmartScanner Bot شغّال\n\n"
-        "الأوامر:\n"
-        "/status - حالة البوت\n"
-        "/ping - اختبار فوري\n"
-        "/time - وقت السيرفر\n"
-        "/help - جميع الأوامر\n"
+# =========================
+# أوامر
+# =========================
+def start(update, context):
+    update.message.reply_text(
+        "🤖 SmartScanner Bot شغال\n"
+        "/status - الحالة\n"
+        "/ping - اختبار\n"
+        "/time - الوقت\n"
+        "/id - Chat ID"
     )
 
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📚 جميع الأوامر المتاحة:\n\n"
-        "/start - بدء البوت\n"
-        "/status - حالة البوت\n"
-        "/ping - اختبار سريع\n"
-        "/time - وقت Railway\n"
-        "/echo - يكرر آخر رسالة\n"
-        "/id - يعرض Chat ID\n"
-    )
+def status(update, context):
+    update.message.reply_text("✅ البوت يعمل بدون مشاكل")
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ البوت يعمل بدون أخطاء")
+def ping(update, context):
+    update.message.reply_text("🏓 Pong")
 
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏓 Pong")
+def time_cmd(update, context):
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    update.message.reply_text(f"🕒 {now}")
 
-async def time_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    await update.message.reply_text(f"⏰ الوقت الحالي:\n{now}")
+def show_id(update, context):
+    update.message.reply_text(f"🆔 Chat ID: {update.message.chat_id}")
 
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text:
-        await update.message.reply_text(update.message.text)
+def echo(update, context):
+    update.message.reply_text(update.message.text)
 
-async def show_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"🆔 Chat ID:\n{update.message.chat_id}")
-
-# ===============================
-# 🚀 رسالة إجبارية عند التشغيل
-# ===============================
-
-async def startup_message(app):
-    try:
-        await app.bot.send_message(
-            chat_id=OWNER_ID,
-            text="🚀 البوت اشتغل بنجاح على Railway\n"
-                 f"⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
-        )
-        logging.info("Startup message sent")
-    except Exception as e:
-        logging.error(f"Startup message FAILED: {e}")
-
-# ===============================
-# 🧠 التشغيل الرئيسي
-# ===============================
-
+# =========================
+# تشغيل
+# =========================
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    bot = telegram.Bot(token=BOT_TOKEN)
 
-    # أوامر
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("ping", ping))
-    app.add_handler(CommandHandler("time", time_cmd))
-    app.add_handler(CommandHandler("id", show_id))
-    app.add_handler(CommandHandler("echo", echo))
+    # رسالة إجبارية عند التشغيل
+    try:
+        bot.send_message(
+            chat_id=CHAT_ID,
+            text="🚀 SmartScanner Bot اشتغل بنجاح على Railway"
+        )
+    except Exception as e:
+        logging.error(f"Startup message failed: {e}")
 
-    # أي رسالة عادية
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    updater = Updater(BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-    # رسالة تشغيل
-    app.post_init = startup_message
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("status", status))
+    dp.add_handler(CommandHandler("ping", ping))
+    dp.add_handler(CommandHandler("time", time_cmd))
+    dp.add_handler(CommandHandler("id", show_id))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
 
-    logging.info("Bot starting...")
-    app.run_polling()
+    logging.info("Bot running...")
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
